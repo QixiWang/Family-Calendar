@@ -1,3 +1,5 @@
+import 'package:calendar/screens/memo_screen.dart';
+import 'package:calendar/screens/select_family_screen.dart';
 import 'package:flutter/material.dart';
 import 'calendar_screen.dart';
 import 'family_screen.dart';
@@ -295,13 +297,17 @@ class SettingsScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _navItem(context, Icons.calendar_today, 'Today', selected: false, onTap: () => Navigator.pop(context)),
-          _navItem(context, Icons.people, 'Family', selected: false, onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const FamilyScreen()),
-          )),
-          _navItem(context, Icons.chat_bubble_outline, 'Chat', selected: false, onTap: () {
+          _navItem(context, Icons.chat_bubble_outline, 'Memo', selected: false, onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              MaterialPageRoute(builder: (_) => const MemoScreen()),
+            );
+          }),
+          _navItem(context, Icons.people, 'Family', selected: false, onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SelectFamilyScreen()),
+          )),
+          _navItem(context, Icons.calendar_today, 'Today', selected: false, onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CalendarScreen()),
             );
           }),
           _navItem(context, Icons.settings, 'Settings', selected: true, onTap: null),

@@ -418,27 +418,27 @@ class _FamilyScreenState extends State<FamilyScreen> {
           top: BorderSide(color: const Color(0xFFF1F5F9)),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _navItem(context, Icons.calendar_today, 'Today', selected: false, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const CalendarScreen()),
-            );
-          }),
-          _navItem(context, Icons.people, 'Family', selected: true, onTap: null),
-          _navItem(context, Icons.chat_bubble_outline, 'Chat', selected: false, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ChatListScreen()),
-            );
-          }),
-          _navItem(context, Icons.settings, 'Settings', selected: false, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
-          }),
-        ],
-      ),
+      // child: Row(
+      //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      //   children: [
+      //     _navItem(context, Icons.calendar_today, 'Today', selected: false, onTap: () {
+      //       Navigator.of(context).push(
+      //         MaterialPageRoute(builder: (_) => const CalendarScreen()),
+      //       );
+      //     }),
+      //     _navItem(context, Icons.people, 'Family', selected: true, onTap: null),
+      //     _navItem(context, Icons.chat_bubble_outline, 'Chat', selected: false, onTap: () {
+      //       Navigator.of(context).push(
+      //         MaterialPageRoute(builder: (_) => const ChatListScreen()),
+      //       );
+      //     }),
+      //     _navItem(context, Icons.settings, 'Settings', selected: false, onTap: () {
+      //       Navigator.of(context).push(
+      //         MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      //       );
+      //     }),
+      //   ],
+      // ),
     );
   }
 

@@ -115,25 +115,39 @@ class EventCard extends StatelessWidget {
 
   List<Widget> _buildParticipantAvatars() {
     const double size = 32;
-    List<Widget> widgets = [];
-    for (var i = 0; i < participants.length; i++) {
-      // if a URL was provided, skip it since we no longer load network images
-      widgets.add(
-        Container(
+    const double overlap = 10;
+
+    return participants.asMap().entries.map((entry) {
+      final index = entry.key;
+      final name = entry.value;
+      final imageUrl = _participantAvatarUrl(name);
+
+      return Transform.translate(
+        offset: Offset(index == 0 ? 0 : -overlap, 0),
+        child: Container(
           width: size,
           height: size,
-          margin: EdgeInsets.only(left: i == 0 ? 0 : 0),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
             shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          child: const Center(
-            child: Icon(Icons.person, size: 18, color: Colors.grey),
+          child: ClipOval(
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 18, color: Colors.grey),
+            ),
           ),
         ),
       );
-    }
-    return widgets;
+    }).toList();
   }
 
   ImageProvider? _tryNetworkImage(String url) {
@@ -147,15 +161,15 @@ class EventCard extends StatelessWidget {
   String _participantAvatarUrl(String name) {
     switch (name) {
       case 'Mom':
-        return FigmaAssets.familyImgMom;
+        return FigmaAssets.imgParticipant1;
       case 'Dad':
-        return FigmaAssets.familyImgDad;
+        return FigmaAssets.imgParticipant2;
       case 'Sister':
-        return FigmaAssets.familyImgUncleArthur;
+        return FigmaAssets.imgParticipant3;
       case 'Brother':
-        return FigmaAssets.familyImgCousinSarah;
+        return FigmaAssets.imgParticipant1;
       default:
-        return FigmaAssets.familyImgMom;
+        return FigmaAssets.imgParticipant1;
     }
   }
 
