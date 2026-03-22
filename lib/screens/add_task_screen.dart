@@ -7,7 +7,22 @@ import '../assets/figma_assets.dart';
 import 'family_selection_screen.dart';
 
 class AddTaskScreen extends StatefulWidget {
-  const AddTaskScreen({Key? key}) : super(key: key);
+  const AddTaskScreen({
+    Key? key,
+    this.initialTitle,
+    this.initialNotes,
+    this.initialDate,
+    this.initialTime,
+    this.initialCategory,
+    this.initialReminderEnabled,
+  }) : super(key: key);
+
+  final String? initialTitle;
+  final String? initialNotes;
+  final DateTime? initialDate;
+  final TimeOfDay? initialTime;
+  final String? initialCategory;
+  final bool? initialReminderEnabled;
 
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
@@ -32,26 +47,31 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   TimeOfDay? _selectedTime;
 
   static const _categories = [
-    {
-      'label': 'Education',
-      'color': Color(0xFF3B82F6),
-    },
-    {
-      'label': 'Family',
-      'color': Color(0xFF8B5CF6),
-    },
-    {
-      'label': 'Leisure',
-      'color': Color(0xFFF97316),
-    },
+    {'label': 'Education', 'color': Color(0xFF3B82F6)},
+    {'label': 'Family', 'color': Color(0xFF8B5CF6)},
+    {'label': 'Leisure', 'color': Color(0xFFF97316)},
   ];
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _selectedDate = DateTime(now.year, now.month, now.day);
-    _selectedTime = TimeOfDay(hour: now.hour, minute: now.minute);
+    _titleController.text = widget.initialTitle?.trim() ?? '';
+    _notesController.text = widget.initialNotes?.trim() ?? '';
+    _selectedDate =
+        widget.initialDate ?? DateTime(now.year, now.month, now.day);
+    _selectedTime =
+        widget.initialTime ?? TimeOfDay(hour: now.hour, minute: now.minute);
+    _reminderEnabled = widget.initialReminderEnabled ?? true;
+
+    final initialCategory = widget.initialCategory?.trim().toLowerCase();
+    final matchedIndex = _categories.indexWhere(
+      (category) =>
+          (category['label'] as String).toLowerCase() == initialCategory,
+    );
+    if (matchedIndex >= 0) {
+      _selectedCategoryIndex = matchedIndex;
+    }
   }
 
   @override
@@ -136,17 +156,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   DateTime _buildStartDateTime() {
     final date = _selectedDate!;
     final time = _selectedTime!;
-    return DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
-    );
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
   String _selectedEventType() {
-    return (_categories[_selectedCategoryIndex]['label'] as String).toLowerCase();
+    return (_categories[_selectedCategoryIndex]['label'] as String)
+        .toLowerCase();
   }
 
   Future<String?> _loadCurrentFamilyId(String uid) async {
@@ -290,9 +305,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -609,10 +624,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
               border: InputBorder.none,
             ),
-            style: const TextStyle(
-              color: Color(0xFF334155),
-              fontSize: 15,
-            ),
+            style: const TextStyle(color: Color(0xFF334155), fontSize: 15),
           ),
         ),
       ],
@@ -728,10 +740,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.notifications,
-              color: _accentColor,
-            ),
+            child: const Icon(Icons.notifications, color: _accentColor),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -798,21 +807,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             child: Center(
               child: _isSaving
                   ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
                   : const Text(
-                'Save Task',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
+                      'Save Task',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
         ),

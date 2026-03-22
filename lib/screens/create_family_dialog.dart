@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class CreateFamilyDialog extends StatefulWidget {
@@ -9,6 +11,7 @@ class CreateFamilyDialog extends StatefulWidget {
 
 class _CreateFamilyDialogState extends State<CreateFamilyDialog> {
   final TextEditingController _nameController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -16,12 +19,153 @@ class _CreateFamilyDialogState extends State<CreateFamilyDialog> {
     super.dispose();
   }
 
+  Future<Map<String, dynamic>?> _findUserByUid(String uid) async {
+    final firestore = FirebaseFirestore.instance;
+
+    // 方案1：users 文档 id 就是 uid
+    final directDoc = await firestore.collection('users').doc(uid).get();
+    if (directDoc.exists) {
+      return directDoc.data();
+    }
+
+    // 方案2：users 文档里有 uid 字段
+    final query = await firestore
+        .collection('users')
+        .where('uid', isEqualTo: uid)
+        .limit(1)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      return query.docs.first.data();
+    }
+
+    return null;
+  }
+
+  Future<void> _createFamily() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      throw Exception('Current user is null. Please login first.');
+    }
+
+    final familyName = _nameController.text.trim();
+
+    if (familyName.isEmpty) {
+      throw Exception('Please enter family name');
+    }
+
+    final firestore = FirebaseFirestore.instance;
+    final uid = currentUser.uid;
+    final now = Timestamp.now();
+
+    final userData = await _findUserByUid(uid);
+
+    final nickname = (
+        userData?['nickname'] ??
+            userData?['fullName'] ??
+            userData?['name'] ??
+            userData?['displayName'] ??
+            currentUser.displayName ??
+            'Unknown User'
+    ).toString();
+
+    final userPhotoUrl = (
+        userData?['photoURL'] ??
+            userData?['photoUrl'] ??
+            userData?['avatar'] ??
+            currentUser.photoURL ??
+            ''
+    ).toString().trim();
+
+    // families/{familyId}
+    final familyRef = firestore.collection('families').doc();
+    final familyId = familyRef.id;
+
+    // families/{familyId}/members/{uid}
+    final memberRef = familyRef.collection('members').doc(uid);
+
+    // users/{uid}/families/{familyId}
+    final userFamilyRef = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('families')
+        .doc(familyId);
+
+    final batch = firestore.batch();
+
+    batch.set(familyRef, {
+      'familyId': familyId,
+      'familyName': familyName,
+      'description': '',
+      'createdBy': uid,
+      'createdAt': now,
+      'updatedAt': now,
+      'isArchived': false,
+      'photoURL': '',
+    });
+
+    batch.set(memberRef, {
+      'uid': uid,
+      'nickname': nickname,
+      'role': 'owner',
+      'familyRole': 'owner',
+      'status': 'active',
+      'joinedAt': now,
+    });
+
+    batch.set(userFamilyRef, {
+      'familyId': familyId,
+      'familyName': familyName,
+      'joinedAt': now,
+      'role': 'owner',
+      'photoURL': userPhotoUrl,
+    });
+
+    await batch.commit();
+  }
+
+  Future<void> _handleCreate() async {
+    if (_isLoading) return;
+
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      await _createFamily();
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Family created successfully'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black.withOpacity(0.3),
       body: GestureDetector(
-        onTap: () => Navigator.of(context).pop(),
+        onTap: _isLoading ? null : () => Navigator.of(context).pop(),
         child: Center(
           child: GestureDetector(
             onTap: () {},
@@ -49,7 +193,9 @@ class _CreateFamilyDialogState extends State<CreateFamilyDialog> {
                       ),
                       InkWell(
                         borderRadius: BorderRadius.circular(999),
-                        onTap: () => Navigator.of(context).pop(),
+                        onTap: _isLoading
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: Container(
                           width: 36,
                           height: 36,
@@ -86,6 +232,7 @@ class _CreateFamilyDialogState extends State<CreateFamilyDialog> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: TextField(
                       controller: _nameController,
+                      enabled: !_isLoading,
                       decoration: const InputDecoration(
                         border: InputBorder.none,
                         hintText: 'e.g. Johnson Family',
@@ -98,9 +245,7 @@ class _CreateFamilyDialogState extends State<CreateFamilyDialog> {
                   ),
                   const SizedBox(height: 24),
                   GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).pop();
-                    },
+                    onTap: _isLoading ? null : _handleCreate,
                     child: Container(
                       width: double.infinity,
                       height: 56,
@@ -119,8 +264,17 @@ class _CreateFamilyDialogState extends State<CreateFamilyDialog> {
                           ),
                         ],
                       ),
-                      child: const Center(
-                        child: Text(
+                      child: Center(
+                        child: _isLoading
+                            ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Colors.white,
+                          ),
+                        )
+                            : const Text(
                           'Create',
                           style: TextStyle(
                             fontSize: 16,

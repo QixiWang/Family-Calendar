@@ -1,12 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../assets/figma_assets.dart';
-import 'invitation_screen.dart';
 import 'chat_screen.dart';
-import 'chat_list_screen.dart';
-import 'settings_screen.dart';
-import 'calendar_screen.dart';
 
 class FamilyScreen extends StatefulWidget {
   final String familyId;
@@ -29,10 +24,19 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   late Future<List<Map<String, dynamic>>> _membersFuture;
 
+  final TextEditingController _inviteEmailController = TextEditingController();
+  bool _isInviting = false;
+
   @override
   void initState() {
     super.initState();
     _membersFuture = _loadFamilyMembers();
+  }
+
+  @override
+  void dispose() {
+    _inviteEmailController.dispose();
+    super.dispose();
   }
 
   Future<void> _refreshMembers() async {
@@ -46,13 +50,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<Map<String, dynamic>?> _findUserByUid(String userId) async {
     final firestore = FirebaseFirestore.instance;
 
-    // 方案 1：users 文档 id 就是 uid
+    // 方案1：users 文档 id 就是 uid
     final directDoc = await firestore.collection('users').doc(userId).get();
     if (directDoc.exists) {
       return directDoc.data();
     }
 
-    // 方案 2：users 文档里有 uid 字段
+    // 方案2：users 文档里有 uid 字段
     final query = await firestore
         .collection('users')
         .where('uid', isEqualTo: userId)
@@ -64,6 +68,145 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
 
     return null;
+  }
+
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?> _findUserDocByEmail(
+      String email,
+      ) async {
+    final firestore = FirebaseFirestore.instance;
+    final normalizedEmail = email.trim().toLowerCase();
+
+    final query = await firestore
+        .collection('users')
+        .where('email', isEqualTo: normalizedEmail)
+        .limit(1)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      return query.docs.first;
+    }
+
+    return null;
+  }
+
+  Future<void> _inviteUserByEmail() async {
+    if (_isInviting) return;
+
+    final inputEmail = _inviteEmailController.text.trim().toLowerCase();
+
+    if (inputEmail.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter an email address')),
+      );
+      return;
+    }
+
+    try {
+      setState(() {
+        _isInviting = true;
+      });
+
+      final firestore = FirebaseFirestore.instance;
+      final familyRef = firestore.collection('families').doc(widget.familyId);
+      final familyDoc = await familyRef.get();
+
+      if (!familyDoc.exists) {
+        throw Exception('Family does not exist');
+      }
+
+      final familyData = familyDoc.data() ?? {};
+      final familyName =
+      (familyData['familyName'] ?? widget.familyName).toString();
+      final familyPhotoURL = (familyData['photoURL'] ?? '').toString();
+
+      // 1. 根据邮箱查找用户
+      final invitedUserDoc = await _findUserDocByEmail(inputEmail);
+
+      if (invitedUserDoc == null) {
+        throw Exception('No user found with this email');
+      }
+
+      final invitedUid = invitedUserDoc.id;
+      final invitedUserData = invitedUserDoc.data();
+
+      final nickname = (
+          invitedUserData['fullName'] ??
+              invitedUserData['name'] ??
+              invitedUserData['displayName'] ??
+              invitedUserData['nickname'] ??
+              inputEmail
+      ).toString();
+
+      // 2. 检查该用户是否已经在家庭成员中
+      final existingMemberDoc =
+      await familyRef.collection('members').doc(invitedUid).get();
+
+      if (existingMemberDoc.exists) {
+        throw Exception('This user is already in the family');
+      }
+
+      // 3. 检查该用户的 families 子集合中是否已存在该家庭
+      final userFamilyRef = firestore
+          .collection('users')
+          .doc(invitedUid)
+          .collection('families')
+          .doc(widget.familyId);
+
+      final existingUserFamilyDoc = await userFamilyRef.get();
+      if (existingUserFamilyDoc.exists) {
+        throw Exception('This user already has this family in profile');
+      }
+
+      final now = Timestamp.now();
+      final batch = firestore.batch();
+
+      // 4. 写入 users/{uid}/families/{familyId}
+      batch.set(userFamilyRef, {
+        'familyId': widget.familyId,
+        'familyName': familyName,
+        'joinedAt': now,
+        'photoURL': familyPhotoURL,
+        'role': 'member',
+      });
+
+      // 5. 写入 families/{familyId}/members/{uid}
+      batch.set(
+        familyRef.collection('members').doc(invitedUid),
+        {
+          'uid': invitedUid,
+          'nickname': nickname,
+          'role': 'member',
+          'familyRole': 'member',
+          'status': 'active',
+          'joinedAt': now,
+        },
+      );
+
+      await batch.commit();
+
+      _inviteEmailController.clear();
+      await _refreshMembers();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$nickname has been added to the family')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isInviting = false;
+        });
+      }
+    }
   }
 
   Future<List<Map<String, dynamic>>> _loadFamilyMembers() async {
@@ -80,8 +223,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
     for (final doc in snapshot.docs) {
       final memberData = doc.data();
 
-      // members 文档 id = userId，或者字段里有 userId
-      final String userId = (memberData['userId'] ?? doc.id).toString().trim();
+      final String userId =
+      (memberData['uid'] ?? memberData['userId'] ?? doc.id)
+          .toString()
+          .trim();
 
       if (userId.isEmpty) {
         continue;
@@ -95,6 +240,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
           userData?['fullName'] ??
               userData?['name'] ??
               userData?['displayName'] ??
+              memberData['nickname'] ??
               memberData['fullName'] ??
               memberData['name'] ??
               memberData['displayName'] ??
@@ -138,8 +284,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Padding(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 20,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -213,8 +361,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             ),
             const SizedBox(height: 12),
             Container(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 24, vertical: 17),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFFF3EEE0),
                 borderRadius: BorderRadius.circular(24),
@@ -229,15 +376,36 @@ class _FamilyScreenState extends State<FamilyScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      'family.member@email.com',
-                      style: TextStyle(
+                    child: TextField(
+                      controller: _inviteEmailController,
+                      enabled: !_isInviting,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        hintText: 'family.member@email.com',
+                        hintStyle: TextStyle(
+                          fontSize: 16,
+                          color: primaryColor.withOpacity(0.4),
+                        ),
+                      ),
+                      style: const TextStyle(
                         fontSize: 16,
-                        color: primaryColor.withOpacity(0.4),
+                        color: primaryColor,
                       ),
                     ),
                   ),
-                  const Icon(Icons.clear, size: 24, color: Colors.black45),
+                  GestureDetector(
+                    onTap: _isInviting
+                        ? null
+                        : () {
+                      _inviteEmailController.clear();
+                    },
+                    child: const Icon(
+                      Icons.clear,
+                      size: 24,
+                      color: Colors.black45,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -263,27 +431,32 @@ class _FamilyScreenState extends State<FamilyScreen> {
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const InvitationScreen(),
-                      ),
-                    );
-                  },
+                  onTap: _isInviting ? null : _inviteUserByEmail,
                   borderRadius: BorderRadius.circular(24),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Text(
-                        'Send Invitation',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: primaryColor,
+                    children: [
+                      if (_isInviting)
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: primaryColor,
+                          ),
+                        )
+                      else ...const [
+                        Text(
+                          'Send Invitation',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: primaryColor,
+                          ),
                         ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.send, size: 14, color: primaryColor),
+                        SizedBox(width: 8),
+                        Icon(Icons.send, size: 14, color: primaryColor),
+                      ],
                     ],
                   ),
                 ),
@@ -319,8 +492,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
             padding: const EdgeInsets.all(21),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.6),
-              border:
-              Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.4),
+                width: 1,
+              ),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
